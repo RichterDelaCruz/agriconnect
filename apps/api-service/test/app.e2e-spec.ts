@@ -1,11 +1,13 @@
 /**
  * E2E Test Suite — AgriConnect API
  *
- * Covers three system-level behaviours against a live PostgreSQL + Redis:
+ * Covers four system-level behaviours against a live PostgreSQL + Redis:
  *
  *  1. Catalog pagination  — GET /farmers and GET /farmers/:id/products
  *  2. Concurrency safety  — 50 simultaneous POST /requests with 1 unit of stock
- *  3. Real-time delivery  — Redis Pub/Sub message received within 200 ms SLA
+ *  3. Redis Pub/Sub       — message delivered within 200 ms SLA
+ *  4. WebSocket delivery  — Socket.IO client connected to notification-service
+ *                           receives the "new_request" event end-to-end
  *
  * Prerequisites: PostgreSQL and Redis running (docker compose up -d).
  */
@@ -13,7 +15,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import { AppModule } from '../src/app.module';
+import { AppModule as NotificationAppModule } from '../../notification-service/src/app.module';
 import { AppDataSource } from '@agriconnect/database';
 import { Redis } from 'ioredis';
 
@@ -32,8 +36,10 @@ async function getRepos() {
 
 describe('AgriConnect API (e2e)', () => {
   let app: INestApplication;
+  let notificationApp: INestApplication;
 
   beforeAll(async () => {
+    // Start the API service
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -41,10 +47,20 @@ describe('AgriConnect API (e2e)', () => {
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1');
     await app.init();
+
+    // Start the notification service on port 3001 so Socket.IO clients can connect
+    const notificationFixture: TestingModule = await Test.createTestingModule({
+      imports: [NotificationAppModule],
+    }).compile();
+
+    notificationApp = notificationFixture.createNestApplication();
+    await notificationApp.listen(3001);
+
     await getRepos();
   });
 
   afterAll(async () => {
+    await notificationApp.close();
     await app.close();
     if (AppDataSource.isInitialized) await AppDataSource.destroy();
   });
@@ -336,6 +352,76 @@ describe('AgriConnect API (e2e)', () => {
         await subscriber.quit();
       },
       10_000,
+    );
+  });
+
+  // ── 4. WebSocket end-to-end delivery ──────────────────────────────────────
+
+  describe('WebSocket — Socket.IO client receives "new_request" event', () => {
+    it(
+      'delivers the notification to a registered farmer socket within 1 s',
+      async () => {
+        const { farmerRepo, productRepo, distributorRepo } = await getRepos();
+
+        const farmer = await farmerRepo.save({
+          name: 'Socket Farmer', location: 'Socket Region', imageUrl: null,
+        });
+        const product = await productRepo.save({
+          farmerId: farmer.id, name: 'Socket Product', price: 30,
+          stockQuantity: 5, imageUrl: null,
+        });
+        const distributor = await distributorRepo.save({
+          name: 'Socket Distributor', email: `sock-${Date.now()}@test.com`,
+        });
+
+        // Connect a Socket.IO client to the notification-service namespace
+        const socket: ClientSocket = ioClient(
+          'http://localhost:3001/notifications',
+          { transports: ['websocket'] },
+        );
+
+        const eventReceived = new Promise<Record<string, unknown>>(
+          (resolve, reject) => {
+            const timeout = setTimeout(
+              () => reject(new Error('No WebSocket event within 1 s')),
+              1000,
+            );
+            socket.on('connect', () => {
+              // Register this socket as the farmer so the gateway routes to it
+              socket.emit('register', { farmerId: String(farmer.id) });
+            });
+            socket.on('new_request', (payload: Record<string, unknown>) => {
+              clearTimeout(timeout);
+              resolve(payload);
+            });
+            socket.on('connect_error', (err: Error) => {
+              clearTimeout(timeout);
+              reject(err);
+            });
+          },
+        );
+
+        // Give the socket a moment to connect and register before placing the order
+        await new Promise((r) => setTimeout(r, 100));
+
+        await request(app.getHttpServer())
+          .post('/api/v1/requests')
+          .send({
+            distributorId: distributor.id,
+            farmerIds:     [farmer.id],
+            items:         [{ productId: product.id, quantity: 1 }],
+          })
+          .expect(201);
+
+        const payload = await eventReceived;
+
+        expect(payload.farmerId).toBe(String(farmer.id));
+        expect(payload.requestId).toBeDefined();
+        expect(payload.message).toBeDefined();
+
+        socket.disconnect();
+      },
+      15_000,
     );
   });
 });
