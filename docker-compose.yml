@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: agriconnect
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+
+  api-service:
+    build:
+      context: .
+      dockerfile: apps/api-service/Dockerfile
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: agriconnect
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CDN_BASE_URL: https://cdn.agriconnect.com/media
+      PORT: 3000
+    ports:
+      - '3000:3000'
+    depends_on:
+      - postgres
+      - redis
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: apps/notification-service/Dockerfile
+    environment:
+      NODE_ENV: development
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PORT: 3001
+    ports:
+      - '3001:3001'
+    depends_on:
+      - redis
+
+volumes:
+  postgres_data:

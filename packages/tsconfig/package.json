@@ -1,0 +1,9 @@
+{
+  "name": "@agriconnect/tsconfig",
+  "version": "1.0.0",
+  "private": true,
+  "exports": {
+    "./base.json": "./base.json",
+    "./nestjs.json": "./nestjs.json"
+  }
+}

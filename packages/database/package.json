@@ -1,0 +1,28 @@
+{
+  "name": "@agriconnect/database",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "db:migrate": "typeorm-ts-node-commonjs migration:run -d src/data-source.ts",
+    "db:generate": "typeorm-ts-node-commonjs migration:generate -d src/data-source.ts",
+    "db:revert": "typeorm-ts-node-commonjs migration:revert -d src/data-source.ts",
+    "db:seed": "ts-node src/seeds/index.ts"
+  },
+  "dependencies": {
+    "pg": "^8.11.5",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^0.3.20",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@agriconnect/tsconfig": "workspace:*",
+    "@types/pg": "^8.11.6",
+    "@types/uuid": "^9.0.8",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
