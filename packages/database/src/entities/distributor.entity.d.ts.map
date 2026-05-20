@@ -1,1 +1,0 @@
-{"version":3,"file":"distributor.entity.d.ts","sourceRoot":"","sources":["distributor.entity.ts"],"names":[],"mappings":"AAOA,OAAO,EAAE,OAAO,EAAE,MAAM,kBAAkB,CAAC;AAE3C,qBACa,WAAW;IAEtB,EAAE,EAAE,MAAM,CAAC;IAGX,IAAI,EAAE,MAAM,CAAC;IAGb,KAAK,EAAE,MAAM,CAAC;IAGd,SAAS,EAAE,IAAI,CAAC;IAGhB,QAAQ,EAAE,OAAO,EAAE,CAAC;CACrB"}
