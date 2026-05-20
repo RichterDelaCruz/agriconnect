@@ -12,8 +12,8 @@ import { Request } from './request.entity';
 @Entity('farmer')
 @Index('idx_farmer_location', ['location'])
 export class Farmer {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
   @Column({ type: 'varchar', length: 255 })
   name: string;

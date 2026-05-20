@@ -28,7 +28,7 @@ async function seed() {
       const farmer = farmerRepo.create({
         name: `Farmer ${idx}`,
         location: `Region ${(idx % 50) + 1}`,
-        imageUrl: `${CDN_BASE}/farmers/farmer-${idx}.jpg`,
+        imageUrl: `farmers/farmer-${idx}.jpg`,
       });
       farmers.push(farmer);
     }
@@ -43,7 +43,7 @@ async function seed() {
             name: `Product ${p} by ${farmer.name}`,
             price: parseFloat((Math.random() * 200 + 10).toFixed(2)),
             stockQuantity: Math.floor(Math.random() * 100) + 1,
-            imageUrl: `${CDN_BASE}/products/product-${p}.jpg`,
+            imageUrl: `products/product-${p}.jpg`,
           }),
         );
       }

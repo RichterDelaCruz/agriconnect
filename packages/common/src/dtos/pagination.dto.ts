@@ -1,10 +1,10 @@
 export interface PaginationQueryDto {
   limit?: number;
-  cursor?: string;
+  cursor?: number;
 }
 
 export interface PaginatedResponseDto<T> {
   data: T[];
-  nextCursor: string | null;
+  nextCursor: number | null;
   hasNextPage: boolean;
 }

@@ -130,7 +130,7 @@ export class RequestsService {
   ): Promise<void> {
     const publishPromises = requests.map((req) => {
       const payload: FarmerNotificationPayload = {
-        farmerId: req.farmerId,
+        farmerId: String(req.farmerId),
         requestId: req.id,
         message: 'You have received a new distributor request.',
       };

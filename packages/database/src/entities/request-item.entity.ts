@@ -20,8 +20,8 @@ export class RequestItem {
   @JoinColumn({ name: 'requestId' })
   request: Request;
 
-  @Column({ type: 'uuid' })
-  productId: string;
+  @Column({ type: 'int' })
+  productId: number;
 
   @ManyToOne(() => Product, (p) => p.requestItems, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'productId' })

@@ -14,11 +14,11 @@ import { RequestItem } from './request-item.entity';
 @Index('idx_product_farmer_price', ['farmer', 'price'])
 @Index('idx_active_products', { synchronize: false })
 export class Product {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
-  @Column({ type: 'uuid' })
-  farmerId: string;
+  @Column({ type: 'int' })
+  farmerId: number;
 
   @ManyToOne(() => Farmer, (farmer) => farmer.products, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'farmerId' })

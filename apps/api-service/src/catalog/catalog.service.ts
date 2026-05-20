@@ -62,7 +62,7 @@ export class CatalogService {
    * when `inStockOnly=true` to drastically reduce the rows scanned.
    */
   async getProductsByFarmer(
-    farmerId: string,
+    farmerId: number,
     query: PaginationQueryDto & { inStockOnly?: boolean },
   ): Promise<PaginatedResponseDto<Product>> {
     const limit = Math.min(query.limit ?? DEFAULT_LIMIT, MAX_LIMIT);

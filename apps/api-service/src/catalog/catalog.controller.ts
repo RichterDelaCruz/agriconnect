@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Param, Query, ParseIntPipe } from '@nestjs/common';
 import { CatalogService } from './catalog.service';
 import { PaginationQueryDto } from '@agriconnect/common';
 
@@ -13,7 +13,7 @@ export class CatalogController {
 
   @Get('farmers/:farmerId/products')
   getProductsByFarmer(
-    @Param('farmerId', ParseUUIDPipe) farmerId: string,
+    @Param('farmerId', ParseIntPipe) farmerId: number,
     @Query() query: PaginationQueryDto & { inStockOnly?: boolean },
   ) {
     return this.catalogService.getProductsByFarmer(farmerId, query);

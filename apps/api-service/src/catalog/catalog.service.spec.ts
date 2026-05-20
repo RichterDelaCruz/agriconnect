@@ -48,7 +48,7 @@ describe('CatalogService', () => {
   describe('getFarmers', () => {
     it('returns paginated farmers with hasNextPage=false when results <= limit', async () => {
       const farmers = Array.from({ length: 5 }, (_, i) => ({
-        id: `id-${i}`,
+        id: i,
         name: `Farmer ${i}`,
         imageUrl: null,
       }));
@@ -64,7 +64,7 @@ describe('CatalogService', () => {
     it('returns hasNextPage=true and nextCursor when extra row is present', async () => {
       // Return limit+1 rows (21) to signal there is a next page
       const farmers = Array.from({ length: 21 }, (_, i) => ({
-        id: `id-${i}`,
+        id: i,
         name: `Farmer ${i}`,
         imageUrl: null,
       }));
@@ -73,7 +73,7 @@ describe('CatalogService', () => {
       const result = await service.getFarmers({ limit: 20 });
 
       expect(result.hasNextPage).toBe(true);
-      expect(result.nextCursor).toBe('id-19');
+      expect(result.nextCursor).toBe(19);
       expect(result.data).toHaveLength(20);
     });
 
@@ -110,14 +110,14 @@ describe('CatalogService', () => {
   describe('getProductsByFarmer', () => {
     it('returns products for a specific farmer', async () => {
       const products = Array.from({ length: 3 }, (_, i) => ({
-        id: `pid-${i}`,
-        farmerId: 'f-1',
+        id: i,
+        farmerId: 1,
         name: `Product ${i}`,
         imageUrl: null,
       }));
       productRepo.createQueryBuilder.mockReturnValue(buildQbMock(products));
 
-      const result = await service.getProductsByFarmer('f-1', { limit: 20 });
+      const result = await service.getProductsByFarmer(1, { limit: 20 });
 
       expect(result.data).toHaveLength(3);
     });
@@ -126,11 +126,11 @@ describe('CatalogService', () => {
       const qb = buildQbMock([]);
       productRepo.createQueryBuilder.mockReturnValue(qb);
 
-      await service.getProductsByFarmer('f-1', { limit: 20, cursor: 'cursor-id' });
+      await service.getProductsByFarmer(1, { limit: 20, cursor: 5 });
 
       expect(qb.andWhere).toHaveBeenCalledWith(
         'product.id > :cursor',
-        { cursor: 'cursor-id' },
+        { cursor: 5 },
       );
     });
 
@@ -138,7 +138,7 @@ describe('CatalogService', () => {
       const qb = buildQbMock([]);
       productRepo.createQueryBuilder.mockReturnValue(qb);
 
-      await service.getProductsByFarmer('f-1', { limit: 20, inStockOnly: true });
+      await service.getProductsByFarmer(1, { limit: 20, inStockOnly: true });
 
       expect(qb.andWhere).toHaveBeenCalledWith('product.stockQuantity > 0');
     });

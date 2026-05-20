@@ -17,7 +17,7 @@ export class InitSchema1716000000000 implements MigrationInterface {
 
     await queryRunner.query(`
       CREATE TABLE "farmer" (
-        "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+        "id" SERIAL NOT NULL,
         "name" varchar(255) NOT NULL,
         "location" varchar(255) NOT NULL,
         "imageUrl" varchar(1024),
@@ -31,8 +31,8 @@ export class InitSchema1716000000000 implements MigrationInterface {
 
     await queryRunner.query(`
       CREATE TABLE "product" (
-        "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
-        "farmerId" uuid NOT NULL,
+        "id" SERIAL NOT NULL,
+        "farmerId" integer NOT NULL,
         "name" varchar(255) NOT NULL,
         "price" numeric(12,2) NOT NULL,
         "stockQuantity" integer NOT NULL DEFAULT 0,
@@ -55,7 +55,7 @@ export class InitSchema1716000000000 implements MigrationInterface {
       CREATE TABLE "request" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "distributorId" uuid NOT NULL,
-        "farmerId" uuid NOT NULL,
+        "farmerId" integer NOT NULL,
         "status" "request_status_enum" NOT NULL DEFAULT 'PENDING',
         "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT "PK_request" PRIMARY KEY ("id"),
@@ -74,7 +74,7 @@ export class InitSchema1716000000000 implements MigrationInterface {
       CREATE TABLE "request_item" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "requestId" uuid NOT NULL,
-        "productId" uuid NOT NULL,
+        "productId" integer NOT NULL,
         "quantity" integer NOT NULL,
         CONSTRAINT "PK_request_item" PRIMARY KEY ("id"),
         CONSTRAINT "FK_request_item_request" FOREIGN KEY ("requestId") REFERENCES "request"("id") ON DELETE CASCADE,

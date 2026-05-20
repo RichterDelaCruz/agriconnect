@@ -32,8 +32,8 @@ export class Request {
   @JoinColumn({ name: 'distributorId' })
   distributor: Distributor;
 
-  @Column({ type: 'uuid' })
-  farmerId: string;
+  @Column({ type: 'int' })
+  farmerId: number;
 
   @ManyToOne(() => Farmer, (f) => f.requests, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'farmerId' })

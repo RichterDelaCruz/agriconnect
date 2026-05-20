@@ -10,8 +10,8 @@ import { RequestStatus } from '@agriconnect/database';
 
 function makeProduct(overrides: Partial<Product> = {}): Product {
   return {
-    id: 'prod-1',
-    farmerId: 'farmer-1',
+    id: 1,
+    farmerId: 1,
     name: 'Rice',
     price: 50,
     stockQuantity: 10,
@@ -83,8 +83,8 @@ describe('RequestsService', () => {
       await expect(
         service.createRequests({
           distributorId: 'd-1',
-          farmerIds: ['farmer-1'],
-          items: [{ productId: 'prod-missing', quantity: 1 }],
+          farmerIds: [1],
+          items: [{ productId: 999, quantity: 1 }],
         }),
       ).rejects.toThrow(NotFoundException);
     });
@@ -100,8 +100,8 @@ describe('RequestsService', () => {
       await expect(
         service.createRequests({
           distributorId: 'd-1',
-          farmerIds: ['farmer-1'],
-          items: [{ productId: 'prod-1', quantity: 99 }], // exceeds stock
+          farmerIds: [1],
+          items: [{ productId: 1, quantity: 99 }], // exceeds stock
         }),
       ).rejects.toThrow(BadRequestException);
     });
@@ -112,7 +112,7 @@ describe('RequestsService', () => {
       const product = makeProduct({ stockQuantity: 20 });
       const savedRequest = {
         id: 'req-1',
-        farmerId: 'farmer-1',
+        farmerId: 1,
         distributorId: 'd-1',
         status: RequestStatus.PENDING,
         items: [],
@@ -130,14 +130,14 @@ describe('RequestsService', () => {
 
       const result = await service.createRequests({
         distributorId: 'd-1',
-        farmerIds: ['farmer-1'],
-        items: [{ productId: 'prod-1', quantity: 5 }],
+        farmerIds: [1],
+        items: [{ productId: 1, quantity: 5 }],
       });
 
       expect(result).toEqual([savedRequest]);
       expect(redisPublisher.publish).toHaveBeenCalledWith(
         FARMER_NOTIFICATIONS_CHANNEL,
-        expect.stringContaining('"farmerId":"farmer-1"'),
+        expect.stringContaining('"farmerId":"1"'),
       );
     });
 
@@ -145,7 +145,7 @@ describe('RequestsService', () => {
       const product = makeProduct({ stockQuantity: 20 });
       const savedRequest = {
         id: 'req-1',
-        farmerId: 'farmer-1',
+        farmerId: 1,
         distributorId: 'd-1',
         status: RequestStatus.PENDING,
         items: [],
@@ -166,8 +166,8 @@ describe('RequestsService', () => {
       await expect(
         service.createRequests({
           distributorId: 'd-1',
-          farmerIds: ['farmer-1'],
-          items: [{ productId: 'prod-1', quantity: 5 }],
+          farmerIds: [1],
+          items: [{ productId: 1, quantity: 5 }],
         }),
       ).resolves.toBeDefined();
     });

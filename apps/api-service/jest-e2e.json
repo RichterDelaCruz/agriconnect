@@ -2,7 +2,7 @@
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": ".",
   "testRegex": ".e2e-spec.ts$",
-  "transform": { "^.+\\.(t|j)s$": "ts-jest" },
+  "transform": { "^.+\\.ts$": ["ts-jest", { "tsconfig": "tsconfig.e2e.json" }] },
   "testEnvironment": "node",
   "moduleNameMapper": {
     "^@agriconnect/common(.*)$": "<rootDir>/../../packages/common/src$1",
