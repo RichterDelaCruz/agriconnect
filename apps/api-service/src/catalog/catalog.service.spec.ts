@@ -105,6 +105,24 @@ describe('CatalogService', () => {
 
       expect(result.data[0].imageUrl).toContain('cdn.agriconnect.com');
     });
+
+    it('leaves null imageUrl as null (no CDN prefix)', async () => {
+      const farmers = [{ id: 1, name: 'Farmer 1', imageUrl: null }];
+      farmerRepo.createQueryBuilder.mockReturnValue(buildQbMock(farmers));
+
+      const result = await service.getFarmers({ limit: 20 });
+
+      expect(result.data[0].imageUrl).toBeNull();
+    });
+
+    it('applies cursor filter when cursor is provided', async () => {
+      const qb = buildQbMock([]);
+      farmerRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.getFarmers({ limit: 20, cursor: 42 });
+
+      expect(qb.where).toHaveBeenCalledWith('farmer.id > :cursor', { cursor: 42 });
+    });
   });
 
   describe('getProductsByFarmer', () => {
@@ -141,6 +159,47 @@ describe('CatalogService', () => {
       await service.getProductsByFarmer(1, { limit: 20, inStockOnly: true });
 
       expect(qb.andWhere).toHaveBeenCalledWith('product.stockQuantity > 0');
+    });
+
+    it('returns hasNextPage=true and nextCursor when extra row present', async () => {
+      const products = Array.from({ length: 6 }, (_, i) => ({
+        id: i + 1, farmerId: 1, name: `P${i}`, imageUrl: null,
+      }));
+      productRepo.createQueryBuilder.mockReturnValue(buildQbMock(products));
+
+      const result = await service.getProductsByFarmer(1, { limit: 5 });
+
+      expect(result.hasNextPage).toBe(true);
+      expect(result.nextCursor).toBe(5); // id of the 5th (last kept) item
+      expect(result.data).toHaveLength(5);
+    });
+
+    it('prefixes non-null product imageUrl with CDN base', async () => {
+      const products = [{ id: 1, farmerId: 1, name: 'Rice', imageUrl: 'products/rice.jpg' }];
+      productRepo.createQueryBuilder.mockReturnValue(buildQbMock(products));
+
+      const result = await service.getProductsByFarmer(1, { limit: 20 });
+
+      expect(result.data[0].imageUrl).toMatch(/^https:\/\/cdn\.agriconnect\.com\/media\//)
+    });
+
+    it('leaves null product imageUrl as null (no CDN prefix)', async () => {
+      const products = [{ id: 1, farmerId: 1, name: 'Rice', imageUrl: null }];
+      productRepo.createQueryBuilder.mockReturnValue(buildQbMock(products));
+
+      const result = await service.getProductsByFarmer(1, { limit: 20 });
+
+      expect(result.data[0].imageUrl).toBeNull();
+    });
+
+    it('returns empty result for a farmer with no products', async () => {
+      productRepo.createQueryBuilder.mockReturnValue(buildQbMock([]));
+
+      const result = await service.getProductsByFarmer(999, { limit: 20 });
+
+      expect(result.data).toHaveLength(0);
+      expect(result.hasNextPage).toBe(false);
+      expect(result.nextCursor).toBeNull();
     });
   });
 });

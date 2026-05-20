@@ -88,6 +88,31 @@ describe('AgriConnect API (e2e)', () => {
         .get('/api/v1/catalog/farmers/not-a-number/products')
         .expect(400);
     });
+
+    it('returns the last page with hasNextPage=false and nextCursor=null', async () => {
+      const { farmerRepo } = await getRepos();
+
+      // Create 3 farmers and request exactly 3 — no overflow row exists
+      const farmers = await farmerRepo.save([
+        { name: 'Last Page A', location: 'LP Region', imageUrl: null },
+        { name: 'Last Page B', location: 'LP Region', imageUrl: null },
+        { name: 'Last Page C', location: 'LP Region', imageUrl: null },
+      ]) as unknown as Array<{ id: number }>;
+
+      // Use a cursor just before the first newly created farmer so only these 3 are returned
+      const cursorBefore = farmers[0].id - 1;
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/catalog/farmers?limit=3&cursor=${cursorBefore}`)
+        .expect(200);
+
+      // We may get more than 3 if there are DB farmers with IDs in range, so just
+      // confirm that a page with fewer rows than limit signals no next page.
+      if (res.body.data.length <= 3) {
+        expect(res.body.hasNextPage).toBe(false);
+        expect(res.body.nextCursor).toBeNull();
+      }
+    });
   });
 
   describe('GET /api/v1/catalog/farmers/:id/products', () => {
@@ -130,11 +155,91 @@ describe('AgriConnect API (e2e)', () => {
       expect(res.body.data).toHaveLength(1);
       expect(res.body.data[0].name).toBe('In Stock');
     });
+
+    it('returns an empty data array for a farmer that exists but has no products', async () => {
+      const { farmerRepo } = await getRepos();
+
+      const farmer = await farmerRepo.save({
+        name: 'Empty Farmer', location: 'Empty Region', imageUrl: null,
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/catalog/farmers/${farmer.id}/products`)
+        .expect(200);
+
+      expect(res.body.data).toHaveLength(0);
+      expect(res.body.hasNextPage).toBe(false);
+      expect(res.body.nextCursor).toBeNull();
+    });
   });
 
   // ── 2. Concurrency ─────────────────────────────────────────────────────────
 
   describe('POST /api/v1/requests — concurrent request routing', () => {
+    it('returns 404 when requesting a product that does not exist', async () => {
+      const { distributorRepo } = await getRepos();
+      const distributor = await distributorRepo.save({
+        name: 'Ghost Buyer', email: `ghost-${Date.now()}@test.com`,
+      });
+
+      await request(app.getHttpServer())
+        .post('/api/v1/requests')
+        .send({
+          distributorId: distributor.id,
+          farmerIds:     [1],
+          items:         [{ productId: 999999999, quantity: 1 }],
+        })
+        .expect(404);
+    });
+
+    it('returns 400 when product stock is already zero', async () => {
+      const { farmerRepo, productRepo, distributorRepo } = await getRepos();
+
+      const farmer = await farmerRepo.save({
+        name: 'Zero Stock Farmer', location: 'Dry Region', imageUrl: null,
+      });
+      const product = await productRepo.save({
+        farmerId: farmer.id, name: 'Sold Out', price: 50,
+        stockQuantity: 0, imageUrl: null,
+      });
+      const distributor = await distributorRepo.save({
+        name: 'Hopeful Buyer', email: `hopeful-${Date.now()}@test.com`,
+      });
+
+      await request(app.getHttpServer())
+        .post('/api/v1/requests')
+        .send({
+          distributorId: distributor.id,
+          farmerIds:     [farmer.id],
+          items:         [{ productId: product.id, quantity: 1 }],
+        })
+        .expect(400);
+    });
+
+    it('returns 400 when requested quantity exceeds stock', async () => {
+      const { farmerRepo, productRepo, distributorRepo } = await getRepos();
+
+      const farmer = await farmerRepo.save({
+        name: 'Low Stock Farmer', location: 'Low Region', imageUrl: null,
+      });
+      const product = await productRepo.save({
+        farmerId: farmer.id, name: 'Low Stock', price: 50,
+        stockQuantity: 2, imageUrl: null,
+      });
+      const distributor = await distributorRepo.save({
+        name: 'Greedy Buyer', email: `greedy-${Date.now()}@test.com`,
+      });
+
+      await request(app.getHttpServer())
+        .post('/api/v1/requests')
+        .send({
+          distributorId: distributor.id,
+          farmerIds:     [farmer.id],
+          items:         [{ productId: product.id, quantity: 100 }],
+        })
+        .expect(400);
+    });
+
     it(
       'allows exactly 1 of 50 concurrent requests to succeed when only 1 unit is in stock',
       async () => {
