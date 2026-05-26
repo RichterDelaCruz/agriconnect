@@ -12,12 +12,23 @@ async function seed() {
   const productRepo = AppDataSource.getRepository(Product);
   const distributorRepo = AppDataSource.getRepository(Distributor);
 
-  // Seed distributors
+  // Skip if farmers already exist — makes seed idempotent
+  const farmerCount = await farmerRepo.count();
+  if (farmerCount > 0) {
+    console.log(`Database already seeded (${farmerCount} farmers found). Skipping.`);
+    await AppDataSource.destroy();
+    return;
+  }
+
+  // Seed distributors (skip if already exist — makes seed idempotent)
   const distributors = distributorRepo.create([
     { name: 'Global Grains Co.', email: 'contact@globalgrains.com' },
     { name: 'FreshDist Inc.', email: 'ops@freshdist.com' },
   ]);
-  await distributorRepo.save(distributors);
+  await distributorRepo.upsert(distributors, {
+    conflictPaths: ['email'],
+    skipUpdateIfNoValuesChanged: true,
+  });
 
   // Seed 10,000 farmers with products
   const BATCH_SIZE = 500;
