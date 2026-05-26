@@ -48,25 +48,46 @@ export class RequestsService {
    * @returns    Array of persisted Request entities, one per farmer.
    */
   async createRequests(dto: CreateRequestDto): Promise<FarmerRequest[]> {
+    // --- PHASE 1: DATABASE TRANSACTION (atomic) ---
+    // Everything inside this callback runs in a single DB transaction.
+    // If ANY error is thrown, ALL changes are rolled back automatically.
     const savedRequests = await this.dataSource.transaction(
       async (manager) => {
+        // --- Step 1: Collect all product IDs we need to lock ---
         const productIds = dto.items.map((i) => i.productId);
 
-        // Step 1 & 2: Lock product rows — blocks concurrent transactions
-        // from reading-for-update or modifying these rows until we commit.
+        // --- Step 2: Lock product rows with FOR UPDATE ---
+        // This is THE concurrency trick. We acquire pessimistic write locks
+        // on the product rows BEFORE reading or modifying anything.
+        //
+        // Why? When 50 distributors try to buy the last 1 item simultaneously:
+        //   Request A gets the lock first → sees stock=1 → deducts → commits
+        //   Requests B–C–D... wait in a queue for the lock
+        //   When they get the lock, they see stock=0 → reject → rollback
+        //
+        // Without this lock, all 50 requests would read stock=1 at the same time
+        // and oversell the product by 49 units!
         const lockedProducts = await manager
           .createQueryBuilder(Product, 'product')
-          .setLock('pessimistic_write') // translates to FOR UPDATE
+          .setLock('pessimistic_write') // translates to: SELECT ... FOR UPDATE
           .whereInIds(productIds)
           .getMany();
 
+        // --- Step 3: Verify all products exist ---
+        // If the client sent a productId that doesn't exist in the database,
+        // the lockedProducts array will be shorter than productIds.
+        // Reject immediately — no point continuing.
         if (lockedProducts.length !== productIds.length) {
           throw new NotFoundException('One or more products not found.');
         }
 
+        // Build a quick lookup map: productId → Product entity
+        // This avoids O(n²) lookups inside the loops below.
         const productMap = new Map(lockedProducts.map((p) => [p.id, p]));
 
-        // Step 3: Validate stock levels while holding the locks
+        // --- Step 4: Validate stock levels (while holding locks) ---
+        // We hold the FOR UPDATE locks, so no other transaction can change
+        // stock quantities while we check. This is the "validate while locked" pattern.
         for (const item of dto.items) {
           const product = productMap.get(item.productId)!;
           if (product.stockQuantity < item.quantity) {
@@ -77,21 +98,23 @@ export class RequestsService {
           }
         }
 
-        // Step 4: Deduct stock and create request records per farmer
+        // --- Step 5: Deduct stock & create requests, one farmer at a time ---
         const requests: FarmerRequest[] = [];
 
         for (const farmerId of dto.farmerIds) {
-          // Deduct stock for items belonging to this farmer
+          // Filter items that belong to THIS farmer
           const farmerItems = dto.items.filter(
             (i) => productMap.get(i.productId)?.farmerId === farmerId,
           );
 
+          // Deduct stock for each product this farmer sells
           for (const item of farmerItems) {
             const product = productMap.get(item.productId)!;
             product.stockQuantity -= item.quantity;
             await manager.save(Product, product);
           }
 
+          // Create the request record (status = PENDING)
           const request = manager.create(FarmerRequest, {
             distributorId: dto.distributorId,
             farmerId,
@@ -108,12 +131,22 @@ export class RequestsService {
           requests.push(saved);
         }
 
+        // --- Step 6: Transaction commits automatically here ---
+        // If we reach this line, all saves succeeded atomically.
+        // If any error occurred above, the transaction rolls back and
+        // this function never reaches here.
         return requests;
       },
     );
 
-    // Step 5 & 6: Transaction committed — publish notifications outside
-    // the transaction so a Redis failure never rolls back committed data.
+    // --- PHASE 2: PUBLISH NOTIFICATIONS (outside transaction) ---
+    // The transaction has COMMITTED — the data is safely in PostgreSQL.
+    // Now we notify farmers via Redis Pub/Sub.
+    //
+    // IMPORTANT: Redis publish failures are logged but NOT thrown.
+    // Why? If Redis is down, we don't want to undo an already-committed
+    // database transaction. The notification is "best effort" — the data
+    // is safe in the database regardless.
     await this.publishNotifications(savedRequests);
 
     return savedRequests;
@@ -128,20 +161,32 @@ export class RequestsService {
   private async publishNotifications(
     requests: FarmerRequest[],
   ): Promise<void> {
+    // For each saved request, publish a JSON payload to the
+    // `farmer_notifications` Redis channel.
+    //
+    // All notification-service instances are subscribed to this channel.
+    // The instance whose NotificationGateway has the farmer's WebSocket
+    // connection will deliver the message; others will silently no-op.
     const publishPromises = requests.map((req) => {
       const payload: FarmerNotificationPayload = {
         farmerId: String(req.farmerId),
         requestId: req.id,
         message: 'You have received a new distributor request.',
       };
+
+      // Publish to Redis channel. The channel name ('farmer_notifications')
+      // must match exactly what the subscriber service listens to.
       return this.redisPublisher
         .publish(
           FARMER_NOTIFICATIONS_CHANNEL,
           JSON.stringify(payload),
         )
         .catch((err: unknown) => {
-          // Log but do not throw — notification failure must not
-          // reverse an already-committed database transaction.
+          // CRITICAL: We catch the error here instead of letting it propagate.
+          // If Redis publish fails, the database transaction has ALREADY committed.
+          // Throwing would send an HTTP 500 to the client even though the
+          // request was saved successfully — the farmer just won't get a
+          // real-time notification (they'll see it on next refresh).
           this.logger.error(
             `Failed to publish notification for request ${req.id}`,
             err,
@@ -149,6 +194,8 @@ export class RequestsService {
         });
     });
 
+    // Fire all publish calls concurrently — don't wait for one farmer
+    // to be notified before starting the next.
     await Promise.all(publishPromises);
   }
 }
