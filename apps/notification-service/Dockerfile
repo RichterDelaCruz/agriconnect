@@ -15,9 +15,9 @@ RUN pnpm install --frozen-lockfile
 
 FROM installer AS builder
 COPY --from=pruner /app/out/full/ .
-RUN pnpm turbo run build --scope=@agriconnect/notification-service --include-dependencies --no-deps
+RUN pnpm turbo run build --filter=@agriconnect/notification-service --include-dependencies --no-deps
 
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/apps/notification-service/dist ./dist
