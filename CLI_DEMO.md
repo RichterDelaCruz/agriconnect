@@ -21,6 +21,27 @@ pnpm --filter @agriconnect/database db:seed
 
 # 4. Start both services
 pnpm dev
+
+---
+
+> **⚠️ UUID Requirement:** The `distributorId` field in requests must be a **valid UUID**
+> because the `distributor.id` column in PostgreSQL is `uuid` type.
+> Get valid distributor UUIDs from the database:
+>
+> ```bash
+> docker exec -it agriconnect-postgres-1 psql -U postgres -d agriconnect \
+>   -c "SELECT id, name FROM distributor;"
+> ```
+>
+> You'll see output like:
+> ```
+> id                                   | name
+> -------------------------------------+---------------------
+>  c3f45a6d-1ee6-411d-98b5-a4dc7fe0c044 | Global Grains Co.
+>  7efa9dec-1887-4d5d-9a43-28b03004ed4e | FreshDist Inc.
+> ```
+>
+> Use one of these UUIDs in all requests below (replace `DISTRIBUTOR_UUID`).
 ```
 
 ---
@@ -198,7 +219,7 @@ PRODUCT_ID=1
 curl -s -X POST http://localhost:3000/api/v1/requests \
   -H "Content-Type: application/json" \
   -d '{
-    "distributorId": "dist-abc-123",
+    "distributorId": "c3f45a6d-1ee6-411d-98b5-a4dc7fe0c044",
     "farmerIds": [1],
     "items": [
       { "productId": 1, "quantity": 5 }
@@ -212,16 +233,16 @@ curl -s -X POST http://localhost:3000/api/v1/requests \
 ```json
 [
   {
-    "id": 1,
-    "distributorId": "dist-abc-123",
+    "id": "c87528aa-ea9d-43cb-9498-720c6e405589",
+    "distributorId": "c3f45a6d-1ee6-411d-98b5-a4dc7fe0c044",
     "farmerId": 1,
     "status": "PENDING",
-    "createdAt": "2025-06-10T12:00:00.000Z",
+    "createdAt": "2026-05-25T22:25:15.330Z",
     "items": [
       {
-        "id": 1,
+        "id": "a7cac12e-f57f-43c6-9f67-a2bc8418f33a",
         "productId": 1,
-        "quantity": 5
+        "quantity": 3
       }
     ]
   }
@@ -251,7 +272,7 @@ curl -s "http://localhost:3000/api/v1/catalog/farmers/1/products" | jq '.data[] 
 curl -s -X POST http://localhost:3000/api/v1/requests \
   -H "Content-Type: application/json" \
   -d '{
-    "distributorId": "dist-abc-123",
+    "distributorId": "c3f45a6d-1ee6-411d-98b5-a4dc7fe0c044",
     "farmerIds": [1],
     "items": [
       { "productId": 99999, "quantity": 1 }
@@ -276,7 +297,7 @@ curl -s -X POST http://localhost:3000/api/v1/requests \
 curl -s -X POST http://localhost:3000/api/v1/requests \
   -H "Content-Type: application/json" \
   -d '{
-    "distributorId": "dist-abc-123",
+    "distributorId": "c3f45a6d-1ee6-411d-98b5-a4dc7fe0c044",
     "farmerIds": [1],
     "items": [
       { "productId": 1, "quantity": 200 }
@@ -307,7 +328,7 @@ PRODUCT_ID=5  # pick a product with stockQuantity=1
 seq 1 50 | xargs -P 50 -I {} curl -s -X POST http://localhost:3000/api/v1/requests \
   -H "Content-Type: application/json" \
   -d "{
-    \"distributorId\": \"dist-concurrent-{}\",
+    \"distributorId\": \"c3f45a6d-1ee6-411d-98b5-a4dc7fe0c044\",
     \"farmerIds\": [1],
     \"items\": [
       { \"productId\": $PRODUCT_ID, \"quantity\": 1 }
@@ -350,17 +371,25 @@ The `FOR UPDATE` lock serializes the writes — only the first request sees stoc
 
 ### Open WebSocket connection (terminal 1)
 
-```bash
-# Install websocat if needed: brew install websocat
-websocat ws://localhost:3001
+Socket.IO uses its own protocol (not raw WebSockets), so you need the `socket.io-client` library:
 
-# Register as farmer 1
-{"event": "register", "data": { "farmerId": 1 }}
+```bash
+# Install socket.io-client globally
+npm install -g socket.io-client
+
+# Start listening as farmer 1
+NODE_PATH=$(npm root -g) node -e "
+const { io } = require('socket.io-client');
+const s = io('http://localhost:3001/notifications');
+s.on('connect', () => { console.log('CONNECTED'); s.emit('register', { farmerId: '1' }); });
+s.on('new_request', (d) => { console.log('*** NOTIFICATION ***'); console.log(JSON.stringify(d, null, 2)); });
+s.on('connect_error', (e) => console.log('ERROR:', e.message));
+"
 ```
 
-You'll see:
-```json
-{"event": "registered", "data": { "farmerId": 1 }}
+Output:
+```
+CONNECTED
 ```
 
 ### Create a purchase (terminal 2)
@@ -369,7 +398,7 @@ You'll see:
 curl -s -X POST http://localhost:3000/api/v1/requests \
   -H "Content-Type: application/json" \
   -d '{
-    "distributorId": "dist-websocket-demo",
+    "distributorId": "c3f45a6d-1ee6-411d-98b5-a4dc7fe0c044",
     "farmerIds": [1],
     "items": [
       { "productId": 1, "quantity": 3 }
@@ -381,16 +410,12 @@ curl -s -X POST http://localhost:3000/api/v1/requests \
 
 Within ~200ms, you'll see:
 
-```json
+```
+*** NOTIFICATION ***
 {
-  "event": "new_request",
-  "data": {
-    "requestId": 5,
-    "distributorId": "dist-websocket-demo",
-    "items": [
-      { "productId": 1, "name": "Organic Maize", "quantity": 3 }
-    ]
-  }
+  "farmerId": "1",
+  "requestId": "9763edc8-d2c1-4c85-9992-cc02b723b4ad",
+  "message": "You have received a new distributor request."
 }
 ```
 
@@ -404,7 +429,7 @@ Within ~200ms, you'll see:
 curl -s -X POST http://localhost:3000/api/v1/requests \
   -H "Content-Type: application/json" \
   -d '{
-    "distributorId": "dist-ghost",
+    "distributorId": "c3f45a6d-1ee6-411d-98b5-a4dc7fe0c044",
     "farmerIds": [999],
     "items": [
       { "productId": 2, "quantity": 1 }
@@ -428,4 +453,4 @@ Silently succeeds on the API side, but no WebSocket message — the notification
 | Invalid product | `POST ... { productId: 99999 }` | Transaction rolls back |
 | Insufficient stock | `POST ... { quantity: 200 }` | Transaction rolls back |
 | Concurrency (50x) | `xargs -P 50 curl ...` | Row-level locking (`FOR UPDATE`) |
-| WebSocket notify | `websocat ws://localhost:3001` | Redis Pub/Sub → Socket.IO |
+| WebSocket notify | `node -e "const {io}=require('socket.io-client');..."` | Redis Pub/Sub → Socket.IO |
